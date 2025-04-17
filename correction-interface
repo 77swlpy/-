@@ -1,0 +1,158 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import argparse
+import os
+from language_correction_model import TermCorrector, create_sample_dictionaries
+
+def main():
+    parser = argparse.ArgumentParser(description='经济术语和股票名称纠正工具')
+    parser.add_argument('--mode', choices=['term', 'text', 'interactive'], default='interactive',
+                        help='运行模式: term=单个术语纠正, text=文本纠正, interactive=交互模式')
+    parser.add_argument('--input', type=str, help='要纠正的术语或文本')
+    parser.add_argument('--economic-terms', type=str, default='economic_terms.json',
+                        help='经济术语字典文件路径')
+    parser.add_argument('--stock-names', type=str, default='stock_names.json',
+                        help='股票名称字典文件路径')
+    parser.add_argument('--init-samples', action='store_true',
+                        help='创建示例字典数据')
+    args = parser.parse_args()
+    
+    # 创建纠正模型
+    corrector = TermCorrector()
+    
+    # 如果需要创建示例数据，或者字典文件不存在
+    if args.init_samples or not (os.path.exists(args.economic_terms) and os.path.exists(args.stock_names)):
+        print("初始化示例数据...")
+        economic_terms, stock_names = create_sample_dictionaries()
+        
+        # 将示例数据添加到模型中
+        for term, info in economic_terms.items():
+            corrector.add_economic_term(term, info['definition'], info['abbreviations'])
+        
+        for code, info in stock_names.items():
+            corrector.add_stock(code, info['name'], info['abbreviations'], info['industry'])
+        
+        # 保存字典到文件
+        corrector.save_dictionaries(args.economic_terms, args.stock_names)
+    else:
+        # 加载现有字典
+        print(f"从文件加载字典数据...")
+        corrector.load_dictionaries(args.economic_terms, args.stock_names)
+    
+    # 根据运行模式处理
+    if args.mode == 'term' and args.input:
+        result = corrector.correct_term(args.input)
+        print(f"原始: {args.input}")
+        print(f"纠正: {result['corrected']}")
+        print(f"类型: {result['type']}")
+        print(f"置信度: {result['confidence']:.2f}")
+        
+    elif args.mode == 'text' and args.input:
+        result = corrector.correct_text(args.input)
+        print("原文本:")
+        print(args.input)
+        print("\n纠正后文本:")
+        print(result['corrected_text'])
+        print("\n纠正详情:")
+        for original, correction in result['corrections'].items():
+            print(f"{original} -> {correction['corrected']}")
+            
+    elif args.mode == 'interactive':
+        _run_interactive_mode(corrector)
+    
+    else:
+        parser.print_help()
+
+def _run_interactive_mode(corrector):
+    """运行交互模式"""
+    print("\n=== 经济术语和股票名称纠正工具 ===")
+    print("输入'q'或'quit'退出程序")
+    print("输入'mode term'切换到术语纠正模式")
+    print("输入'mode text'切换到文本纠正模式")
+    print("输入'add economic <术语> <定义> [<简称1> <简称2> ...]'添加经济术语")
+    print("输入'add stock <代码> <名称> [<简称1> <简称2> ...] [<行业>]'添加股票信息")
+    print("输入'save'保存当前字典数据")
+    
+    mode = 'term'  # 默认为术语纠正模式
+    
+    while True:
+        try:
+            if mode == 'term':
+                prompt = "\n[术语纠正] 输入要纠正的术语: "
+            else:  # mode == 'text'
+                prompt = "\n[文本纠正] 输入要纠正的文本: "
+                
+            user_input = input(prompt).strip()
+            
+            if user_input.lower() in ['q', 'quit', 'exit']:
+                print("退出程序")
+                break
+                
+            elif user_input.lower() == 'mode term':
+                mode = 'term'
+                print("已切换到术语纠正模式")
+                continue
+                
+            elif user_input.lower() == 'mode text':
+                mode = 'text'
+                print("已切换到文本纠正模式")
+                continue
+                
+            elif user_input.lower() == 'save':
+                corrector.save_dictionaries('economic_terms.json', 'stock_names.json')
+                continue
+                
+            elif user_input.lower().startswith('add economic'):
+                parts = user_input.split(' ')
+                if len(parts) >= 4:
+                    term = parts[2]
+                    definition = parts[3]
+                    abbreviations = parts[4:] if len(parts) > 4 else []
+                    corrector.add_economic_term(term, definition, abbreviations)
+                    print(f"已添加经济术语: {term}")
+                else:
+                    print("格式错误。请使用: add economic <术语> <定义> [<简称1> <简称2> ...]")
+                continue
+                
+            elif user_input.lower().startswith('add stock'):
+                parts = user_input.split(' ')
+                if len(parts) >= 4:
+                    code = parts[2]
+                    name = parts[3]
+                    abbreviations = parts[4:-1] if len(parts) > 5 else []
+                    industry = parts[-1] if len(parts) > 4 else None
+                    corrector.add_stock(code, name, abbreviations, industry)
+                    print(f"已添加股票信息: {name}({code})")
+                else:
+                    print("格式错误。请使用: add stock <代码> <名称> [<简称1> <简称2> ...] [<行业>]")
+                continue
+            
+            # 处理正常输入
+            if mode == 'term':
+                result = corrector.correct_term(user_input)
+                print(f"原始: {user_input}")
+                print(f"纠正: {result['corrected']}")
+                print(f"类型: {result['type']}")
+                print(f"置信度: {result['confidence']:.2f}")
+            else:  # mode == 'text'
+                result = corrector.correct_text(user_input)
+                print("原文本:")
+                print(user_input)
+                print("\n纠正后文本:")
+                print(result['corrected_text'])
+                if result['corrections']:
+                    print("\n纠正详情:")
+                    for original, correction in result['corrections'].items():
+                        print(f"{original} -> {correction['corrected']}")
+                else:
+                    print("\n未发现需要纠正的术语")
+                
+        except KeyboardInterrupt:
+            print("\n程序被中断")
+            break
+        except Exception as e:
+            print(f"发生错误: {e}")
+
+if __name__ == "__main__":
+    main()
