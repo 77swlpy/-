@@ -1,74 +1,120 @@
-# 投资风险预测混合专家模型 (MoE)
+# 经济术语和股票名称纠正模型
 
-这个项目实现了一个混合专家模型(Mixture of Experts, MoE)用于投资风险预测。MoE模型结合了多个"专家"神经网络的预测结果，通过门控网络动态分配权重，以实现更精确的风险评估。
+这个项目实现了一个语言纠正模型，能够根据简称或不标准称呼精确识别经济学术语及股票名称，对语言进行处理来解决在问题输入过程中由于称呼简写或是名称使用不规范等问题导致的无法在数据库中检索到相关内容的问题。
 
-## 模型架构
+## 功能特点
 
-该MoE模型由以下组件构成：
+该模型能够处理以下情况：
 
-1. **多个专家网络**：每个专家网络专注于捕捉不同类型的投资风险模式。
-2. **门控网络**：根据输入特征动态决定每个专家网络的权重。
-3. **集成机制**：将各专家网络的输出按权重合并，生成最终的风险预测。
+1. **简称或缩写识别**：例如，将 "GDP" 识别为 "国内生产总值(Gross Domestic Product)"
+2. **不标准称呼纠正**：例如，将 "沪深300" 识别为 "沪深300指数(CSI 300 Index)"
+3. **错误拼写或近似词识别**：使用字符级相似度计算，识别轻微拼写错误或变体
+4. **股票俗称/简称识别**：例如，将 "茅台" 识别为 "贵州茅台(600519)"
 
-## 特点
+## 技术实现
 
-- 能够捕捉复杂的非线性风险因素和交互效应
-- 通过专家分工提高模型在不同市场环境下的适应性
-- 可视化专家网络的贡献权重，提供模型解释性
+1. **多级匹配策略**：
+   - 直接匹配：检查输入是否为已知的术语、缩写或代码
+   - 相似度匹配：使用TF-IDF向量化和余弦相似度计算字符级相似度
+   - 编辑距离匹配：使用difflib库计算字符串相似度
 
-## 环境配置
+2. **可扩展的知识库**：
+   - 经济术语库：包含标准术语、定义及其可能的缩写或变体
+   - 股票代码库：包含股票代码、名称、行业和常用简称
+   - 支持动态添加新的术语和股票信息
+
+3. **交互式界面**：
+   - 支持单个术语纠正和整段文本纠正
+   - 提供命令行交互式使用方式
+   - 支持批量处理模式
+
+## 安装与依赖
 
 ```bash
+# 安装依赖
 pip install -r requirements.txt
 ```
 
-## 运行示例
+主要依赖：
+- numpy
+- scikit-learn
+- difflib
 
-直接运行主脚本:
+## 使用方法
+
+### 1. 命令行工具
 
 ```bash
-python investment_risk_moe.py
+# 交互模式
+python correction_interface.py
+
+# 术语纠正模式
+python correction_interface.py --mode term --input "GDP"
+
+# 文本纠正模式
+python correction_interface.py --mode text --input "近期GDP增长放缓，沪深300波动较大"
+
+# 初始化示例数据
+python correction_interface.py --init-samples
 ```
 
-## 数据说明
-
-当前实现使用合成数据进行演示，包含以下类型的特征:
-
-- 市场指标（市场回报率、波动率等）
-- 公司财务指标（PE比率、收益增长、负债比率等）
-- 宏观经济指标（GDP增长、通胀率、失业率等）
-- 行业和技术指标
-
-## 使用自己的数据
-
-要使用自己的投资数据，请按以下步骤操作:
-
-1. 准备包含投资特征的数据集 (X) 和相应的风险标签 (y)
-2. 修改 `main()` 函数中的数据加载部分，替换合成数据生成:
+### 2. 作为库导入使用
 
 ```python
-# 替换
-X, y, feature_names = generate_synthetic_investment_data(n_samples=1000)
+from language_correction_model import TermCorrector
 
-# 为
-X = pd.read_csv('your_data.csv')  # 加载您的特征数据
-y = X.pop('risk_label')  # 假设风险标签是数据集中的一列
-feature_names = X.columns.tolist()
-X = X.values  # 转换为NumPy数组
+# 创建纠正模型
+corrector = TermCorrector()
+
+# 加载词典
+corrector.load_dictionaries('economic_terms.json', 'stock_names.json')
+
+# 术语纠正
+result = corrector.correct_term("GDP")
+print(result['corrected'])  # 输出: 国内生产总值(Gross Domestic Product)
+
+# 文本纠正
+text = "近期GDP增长放缓，CPI指数略有上升。茅台股价继续上涨。"
+result = corrector.correct_text(text)
+print(result['corrected_text'])
 ```
 
-## 输出结果
+### 3. 添加新术语
 
-运行完成后，会生成两个可视化文件:
+通过交互界面：
+```
+# 添加经济术语
+add economic ROE 净资产收益率 资产收益率
 
-1. `risk_prediction_results.png` - 显示模型预测风险与实际风险的对比
-2. `expert_contributions.png` - 展示各专家网络的平均贡献权重
+# 添加股票信息
+add stock 601988 中国银行 中行 银行
+```
 
-## 调优参数
+通过代码：
+```python
+# 添加经济术语
+corrector.add_economic_term("ROE", "净资产收益率(Return On Equity)", ["资产收益率"])
 
-在`train_investment_risk_model`函数中可以调整以下参数:
+# 添加股票信息
+corrector.add_stock("601988", "中国银行", ["中行"], "银行")
+```
 
-- `num_experts`: 专家网络的数量
-- `epochs`: 训练轮数
-- `batch_size`: 批处理大小
-- `learning_rate`: 学习率
+## 示例
+
+```
+原文本:
+近期GDP增长放缓，CPI指数略有上升。投资者关注沪深300走势，茅台和五粮保持稳定增长。
+工行发布新的理财产品，而万科在房地产市场面临压力。
+
+纠正后文本:
+近期国内生产总值(Gross Domestic Product)增长放缓，消费者价格指数(Consumer Price Index)略有上升。投资者关注沪深300指数(CSI 300 Index)走势，贵州茅台(600519)和五粮液(000858)保持稳定增长。
+工商银行(601398)发布新的理财产品，而万科A(000002)在房地产市场面临压力。
+```
+
+## 扩展与优化方向
+
+1. **增强分词功能**：集成专业的中文分词工具，提高复杂文本的处理能力
+2. **增加上下文理解**：考虑术语的上下文来提高纠正精度
+3. **扩充知识库**：添加更多经济术语和上市公司信息
+4. **添加模糊匹配机制**：支持更复杂的模糊匹配和纠错算法
+5. **集成数据库**：使用SQL数据库存储大规模术语库
